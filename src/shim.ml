@@ -183,9 +183,8 @@ and parse_arg ?tilde_ok:(tilde_ok=false) ~assign:(assign:bool)
   | [],`CTLAri::_ -> failwith "End of string before CTLENDARI"
   | [],`CTLQuo::_ -> failwith "End of string before CTLQUOTEMARK"
   (* CTLESC *)
-  | '\129'::_ as s,_ -> 
-     let (str,s') = parse_string [] (in_quote stack) s in
-     arg_char assign (S (implode str)) s' bqlist stack
+  | '\129'::c::s',_ ->
+     arg_char assign (K (Escape c)) s' bqlist stack
   (* CTLVAR *)
   | '\130'::t::s,_ ->
      let var_name,s = Dash.split_at (fun c -> c = '=') s in
@@ -284,18 +283,7 @@ and parse_string acc quoted = function
   | '\135'::_ as s -> List.rev acc, s
   | '\136'::_ as s -> List.rev acc, s
   | '~'   ::_ as s -> List.rev acc, s
-  | '\129'::'\\'::'\129'::c::s when quoted ->
-     let c' = ['\\'; c] in
-     parse_string (List.rev c' @ acc) quoted s
-  | '\129'::c::s  -> 
-     let c' =
-       match c with
-       | '*' when not quoted -> ['\\'; c]
-       | '?' when not quoted -> ['\\'; c]
-       | '[' when not quoted -> ['\\'; c]
-       | _   -> [c]
-     in
-     parse_string (List.rev c' @ acc) quoted s
+  | '\129'::_ as s -> List.rev acc, s
   | c::s -> parse_string (c::acc) quoted s
               
 and arg_char assign c s bqlist stack =
@@ -686,6 +674,7 @@ and json_of_control = function
                                             ("s", String s)]
   | Arith (f,w) ->  obj_fw "Arith" f w
   | Quote (f,w) -> obj_fw "Quote" f w
+  | Escape c -> Assoc [tag "Escape"; ("character", String (String.make 1 c))]
 and json_of_format = function
   | Normal -> obj "Normal"
   | Length -> obj "Length"
@@ -758,6 +747,7 @@ and json_of_expansion_step = function
   | ESSplit s -> Assoc [tag "ESSplit"; ("msg", String s)]
   | ESPath s -> Assoc [tag "ESPath"; ("msg", String s)]
   | ESQuote s -> Assoc [tag "ESQuote"; ("msg", String s)]
+  | ESEscape s -> Assoc [tag "ESEscape"; ("msg", String s)]
   | ESStep s -> Assoc [tag "ESStep"; ("msg", String s)]
   | ESNested (outer, inner) -> Assoc [tag "ESNested"; ("inner", json_of_expansion_step inner); ("outer", json_of_expansion_step outer)]
   | ESEval (exp_step, eval_step) ->  Assoc [tag "ESEval"; ("inner", json_of_evaluation_step eval_step); ("outer", json_of_expansion_step exp_step)]
